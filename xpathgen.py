@@ -61,7 +61,8 @@ def transfAddAttribute(xpath, AttributeDictionary, tagName, useWhitelist):
 def transfAddText(xpath, commonSequences):
     xpathList = list()
     for sequence in commonSequences:
-        xpathList.append(xpath + "[contains(string(.), \"" + sequence + "\")]")
+        if len(sequence) < 30: # Ограничение на длину в 30 символов
+            xpathList.append(xpath + "[contains(string(.), \"" + sequence + "\")]")
     return xpathList
 
 
@@ -140,12 +141,11 @@ def specialize(XpathCandidate, DOM, correctNodes, candidateXPathLocatorsList, ro
     evaluateXPaths(DOM, correctNodes, candidateXPathLocatorsList, robustXPathLocatorsList, resultXpathList)
 
     useWhitelist = False
+    if commonSequences and ('contains' not in XpathCandidate):
+        resultXpathList = transfAddText(XpathCandidate, commonSequences)
+        evaluateXPaths(DOM, correctNodes, candidateXPathLocatorsList, robustXPathLocatorsList, resultXpathList)
 
     if not XpathCandidate.startswith("//*"):
-        if commonSequences and 'contains' not in XpathCandidate:
-            resultXpathList = transfAddText(XpathCandidate, commonSequences)
-            evaluateXPaths(DOM, correctNodes, candidateXPathLocatorsList, robustXPathLocatorsList, resultXpathList)
-
         useWhitelist = True
         resultXpathList = transfAddAttribute(XpathCandidate, elementInfo.attrib, elementInfo.tag, useWhitelist)
         evaluateXPaths(DOM, correctNodes, candidateXPathLocatorsList, robustXPathLocatorsList, resultXpathList)
@@ -214,6 +214,7 @@ def sortByQuality(robustXpathList):
 
 
 def main(url, xpathList, importedTree=None):
+    output = {}
     tree = None
     if importedTree is None:
         r = requests.get(url)
@@ -222,33 +223,46 @@ def main(url, xpathList, importedTree=None):
         tree = html.fromstring(rawString)
     else:
         importedTree.replace("&nbsp;", " ")
-        tree = html.fromstring(importedTree)
-
+        tree = html.fromstring("<html>" + importedTree + "</html>")
     nodeList = list()
+    errors = {}
     for xpath in xpathList:
-        tree.xpath(xpath)
-        nodes = tree.xpath(xpath)
+        try:
+            nodes = tree.xpath(xpath)
+        except Exception as e:
+            errors["status"] = 400
+            errors["title"] = "Bad request"
+            errors["detail"] = "Error with recieved XPath occured: " + str(e)
         if not nodes:
-            return "Error: recieved xpath expressions are wrong"
+            errors["status"] = 400
+            errors["title"] = "Bad request"
+            errors["detail"] = "Error: recieved xpath expressions are wrong"
         elif len(nodes) is 1:
             nodeList.append(nodes[0])
         else:
-            return "Error: recieved xpath expressions not unique"
+            errors["status"] = 400
+            errors["title"] = "Bad request"
+            errors["detail"] = "Error: recieved xpath expressions not unique"
     if nodeList is None:
-        return "Nodelist is empty"
+        errors["status"] = 400
+        errors["title"] = "Bad request"
+        errors["detail"] = "Nodelist is empty"
 
+    if errors:
+        output["errors"] = errors
+        return json.dumps(output)
+		
     textStrings = list()
     for node in nodeList:
         textStrings.append(node.text_content())
     commonSequences = Utils.SequenceMatcher(textStrings)
     robustXpathList = RobulaPlusPlus(nodeList, tree, commonSequences=commonSequences)
     weights = sortByQuality(robustXpathList)
-    dict = {}
     results = list()
     for i in range(0, len(robustXpathList)):
         results.append({"value": robustXpathList[i], "ext_data": {"weight" : weights[i]}})
-    dict["results"] = results
-    return json.dumps(dict)
+    output["results"] = results
+    return json.dumps(output)
 
 
 def exec(jsonStr):
@@ -258,7 +272,13 @@ def exec(jsonStr):
     try:
         loadedJson = json.loads(jsonStr)
     except:
-        return "JSON parsing error"
+        output = {}
+        errors = {}
+        errors["status"] = 400
+        errors["title"] = "Bad request"
+        errors["detail"] = "JSON parsing error"
+        output["errors"] = errors
+        return json.dumps(output)
 
     for key, value in loadedJson.items():
         if key == "dom":
