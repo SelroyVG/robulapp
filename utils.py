@@ -4,6 +4,7 @@ import difflib
 def getXPathNumberOfLevels(xpath):
     return xpath.replace("//", "/").count("/")
 
+
 # Calculates precision of the xpath expression
 def CalculatePrecision(tree, xpath, correctNodes):
     nodeList = tree.xpath(xpath)
@@ -16,11 +17,13 @@ def CalculatePrecision(tree, xpath, correctNodes):
     else:
         return 0.0
 
+
 def normalizeSpace(str):
     str = re.sub('\\t', ' ', str)
     str = re.sub('\\n', ' ', str)
     str = re.sub('\\xa0', ' ', str)
     return re.sub(' +', ' ', str)
+
 
 # Decompiles xpath to a list of primitives
 def decompileXpath(xpath):
@@ -49,6 +52,7 @@ def compileXpath(decompiledList):
     for part in decompiledList:
         compiled = compiled + part
     return compiled
+
 
 # Finds common substring sequences in a list of strings
 def SequenceMatcher(listOfSequences):
@@ -81,5 +85,5 @@ def SequenceMatcher(listOfSequences):
     for match in listMatches:
         filteredMatch = re.match(r'([а-яА-Яa-zA-Z.\-])+', match)
         if filteredMatch is not None:
-            filteredMatchesList.append(filteredMatch[0])
+            filteredMatchesList.append(filteredMatch.group(0))
     return filteredMatchesList
